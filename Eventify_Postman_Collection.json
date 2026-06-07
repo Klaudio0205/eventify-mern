@@ -1,0 +1,251 @@
+﻿{
+  "info": {
+    "name": "Eventify MERN - Academic API Tests",
+    "description": "Postman collection for testing Eventify Live Events & Ticket Booking Platform: Auth, Events, Bookings, CRUD, Role Authorization, Dashboards, Seat Selection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Auth - Login User",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"user1@eventify.test\",\n  \"password\": \"User123!\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('User login returns 200', () => pm.response.to.have.status(200));",
+        "const json = pm.response.json();",
+        "pm.test('JWT token exists', () => pm.expect(json.token).to.be.a('string').and.not.empty);",
+        "pm.environment.set('userToken', json.token);"
+      ] }}]
+    },
+    {
+      "name": "02 Auth - Login Admin",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@eventify.test\",\n  \"password\": \"Admin123!\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Admin login returns 200', () => pm.response.to.have.status(200));",
+        "const json = pm.response.json();",
+        "pm.environment.set('adminToken', json.token);"
+      ] }}]
+    },
+    {
+      "name": "03 Auth - Login Organizer",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"organizer1@eventify.test\",\n  \"password\": \"Organizer123!\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Organizer login returns 200', () => pm.response.to.have.status(200));",
+        "const json = pm.response.json();",
+        "pm.environment.set('organizerToken', json.token);"
+      ] }}]
+    },
+    {
+      "name": "04 Events - Get All Events + Save IDs",
+      "request": { "method": "GET", "url": "{{baseUrl}}/events?limit=100" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Events return 200', () => pm.response.to.have.status(200));",
+        "const json = pm.response.json();",
+        "const items = json.items || [];",
+        "pm.test('Seed data has events', () => pm.expect(json.total || items.length).to.be.above(0));",
+        "pm.environment.set('eventId', items[0]._id);",
+        "const standing = items.find(e => e.seatingType === 'standing' && e.remainingSeats > 0) || items[0];",
+        "pm.environment.set('standingEventId', standing._id);",
+        "pm.environment.set('standingTicketType', standing.ticketTypes?.[0]?.name || 'Regular');",
+        "const seated = items.find(e => e.seatingType === 'seated' && e.remainingSeats > 0);",
+        "if (seated) {",
+        "  const allSeats = ['A1','A2','A3','A4','A5','B1','B2','B3','B4','B5','C1','C2','C3','C4','C5'];",
+        "  const occupied = seated.occupiedSeats || [];",
+        "  const freeSeat = allSeats.find(s => !occupied.includes(s)) || 'C5';",
+        "  pm.environment.set('seatedEventId', seated._id);",
+        "  pm.environment.set('availableSeat', freeSeat);",
+        "  pm.environment.set('seatedTicketType', seated.ticketTypes?.[0]?.name || 'Regular');",
+        "}"
+      ] }}]
+    },
+    {
+      "name": "05 Events - Get Event Details",
+      "request": { "method": "GET", "url": "{{baseUrl}}/events/{{eventId}}" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Event details returns 200', () => pm.response.to.have.status(200));",
+        "const json = pm.response.json();",
+        "pm.test('Event has title, date, venue', () => { pm.expect(json.title).to.exist; pm.expect(json.date).to.exist; pm.expect(json.venue).to.exist; });"
+      ] }}]
+    },
+    {
+      "name": "06 Auth Protection - Bookings Without Token Must Fail",
+      "request": { "method": "GET", "url": "{{baseUrl}}/bookings" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Protected route returns 401', () => pm.response.to.have.status(401));"
+      ] }}]
+    },
+    {
+      "name": "07 Booking - Create Standing Ticket",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{userToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"event\": \"{{standingEventId}}\",\n  \"ticketType\": \"{{standingTicketType}}\",\n  \"quantity\": 1,\n  \"selectedSeats\": [],\n  \"attendees\": [\n    { \"fullName\": \"Postman Test User\" }\n  ]\n}" },
+        "url": "{{baseUrl}}/bookings"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Booking created', () => pm.response.to.have.status(201));",
+        "const json = pm.response.json();",
+        "pm.test('Ticket code generated', () => pm.expect(json.ticketCode).to.be.a('string').and.not.empty);",
+        "pm.environment.set('bookingId', json._id);",
+        "pm.environment.set('ticketCode', json.ticketCode);"
+      ] }}]
+    },
+    {
+      "name": "08 Booking - My Tickets",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+        "url": "{{baseUrl}}/bookings"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('My tickets returns 200', () => pm.response.to.have.status(200));",
+        "pm.test('Response is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+      ] }}]
+    },
+    {
+      "name": "09 Booking - Create Seated Ticket",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{userToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"event\": \"{{seatedEventId}}\",\n  \"ticketType\": \"{{seatedTicketType}}\",\n  \"quantity\": 1,\n  \"selectedSeats\": [\"{{availableSeat}}\"],\n  \"attendees\": [\n    { \"fullName\": \"Seat Test User\" }\n  ]\n}" },
+        "url": "{{baseUrl}}/bookings"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Seated booking created', () => pm.response.to.have.status(201));",
+        "const json = pm.response.json();",
+        "pm.test('Selected seat saved', () => pm.expect(json.selectedSeats).to.include(pm.environment.get('availableSeat')));"
+      ] }}]
+    },
+    {
+      "name": "10 Booking - Double Seat Booking Must Fail",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{userToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"event\": \"{{seatedEventId}}\",\n  \"ticketType\": \"{{seatedTicketType}}\",\n  \"quantity\": 1,\n  \"selectedSeats\": [\"{{availableSeat}}\"],\n  \"attendees\": [\n    { \"fullName\": \"Duplicate Seat User\" }\n  ]\n}" },
+        "url": "{{baseUrl}}/bookings"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Same seat is blocked', () => pm.response.to.have.status(400));"
+      ] }}]
+    },
+    {
+      "name": "11 Admin - Dashboard Stats",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/bookings/dashboard"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Admin dashboard returns 200', () => pm.response.to.have.status(200));",
+        "const json = pm.response.json();",
+        "pm.test('Dashboard has stats', () => pm.expect(json).to.be.an('object'));"
+      ] }}]
+    },
+    {
+      "name": "12 Admin - Manage Users",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/users"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Admin can view users', () => pm.response.to.have.status(200));",
+        "pm.test('Users response is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+      ] }}]
+    },
+    {
+      "name": "13 Organizer - Dashboard",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{organizerToken}}" }],
+        "url": "{{baseUrl}}/bookings/dashboard"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Organizer dashboard returns 200', () => pm.response.to.have.status(200));"
+      ] }}]
+    },
+    {
+      "name": "14 Organizer/Admin - Event Attendees",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/events/{{eventId}}/attendees"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Attendees endpoint returns 200 for admin', () => pm.response.to.have.status(200));"
+      ] }}]
+    },
+    {
+      "name": "15 CRUD - Create Category",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Category\",\n  \"slug\": \"postman-test-category\"\n}" },
+        "url": "{{baseUrl}}/categories"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Category created', () => pm.response.to.have.status(201));",
+        "const json = pm.response.json();",
+        "pm.environment.set('categoryId', json._id);"
+      ] }}]
+    },
+    {
+      "name": "16 CRUD - Get Category By ID",
+      "request": { "method": "GET", "url": "{{baseUrl}}/categories/{{categoryId}}" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Category get by id returns 200', () => pm.response.to.have.status(200));"
+      ] }}]
+    },
+    {
+      "name": "17 CRUD - Update Category",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Updated Category\",\n  \"slug\": \"postman-updated-category\"\n}" },
+        "url": "{{baseUrl}}/categories/{{categoryId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Category updated', () => pm.response.to.have.status(200));"
+      ] }}]
+    },
+    {
+      "name": "18 CRUD - Delete Category",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/categories/{{categoryId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Category deleted', () => pm.response.to.have.status(200));"
+      ] }}]
+    }
+  ]
+}
